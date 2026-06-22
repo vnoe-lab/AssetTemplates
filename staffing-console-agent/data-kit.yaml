@@ -1,0 +1,233 @@
+data_kit:
+  name: "[COMPANY] Service Console Agent — Data Kit"
+  version: "1.0"
+  description: >
+    Data Cloud components required for the Staffing Service Console Agent pattern.
+    Built from the Robert Half Console Agent (rhDemo org, June 2026).
+    Two retrievers: Knowledge Articles (country-scoped for email draft grounding)
+    and closed Cases (customer-type-scoped for similar case retrieval).
+  source_org: trailsignup-b840dc69c3ac6b
+  extracted: "2026-06-18"
+  prerequisite_skus:
+    - name: "Data Cloud for Sales/Service Cloud"
+      sku_note: "Data Cloud must be provisioned before any component below can be created. Present to AE before scoping if not on order."
+      tier: REQUIRED
+
+  # ── DATA STREAMS ──────────────────────────────────────────────────────────
+  # All streams below confirmed ACTIVE in rhDemo org.
+  # Stream names follow the Salesforce-generated _Home suffix convention.
+  # Do not rename — the DLO names are derived from these.
+
+  data_streams:
+
+    - name: "Knowledge_kav_Home"
+      label: "Knowledge Article — Home"
+      source_object: "Knowledge__kav"
+      source_type: SALESFORCE_CRM
+      status_in_source_org: ACTIVE
+      purpose: >
+        Feeds published Knowledge Articles into Data Cloud. Powers the Knowledge
+        Article retriever used by the Draft Response subagent to ground email
+        content in approved policy/procedure language.
+      required_fields:
+        - "Id"
+        - "Title"
+        - "Summary"
+        - "ArticleBody"         # or equivalent rich-text body field — verify field API name
+        - "DataCategorySelections"
+        - "Language"
+        - "IsVisibleInApp"
+      filters:
+        - field: "PublishStatus"
+          value: "Online"
+          note: "Only index published articles. Draft articles in ADL will surface unapproved content."
+      data_category_note: >
+        The RH implementation uses DataCategoryName as the retriever pre-filter
+        to scope articles by country (US/UK/CA). The data category group and
+        values must be set up before the retriever pre-filter can be configured.
+        See data-cloud-setup-guide.md Step 3.
+      parametrization_notes: >
+        Stream name is Salesforce-generated and will differ if the Knowledge
+        object was customized. Verify the stream already exists in the Data
+        Cloud app before creating — it may be auto-created when Data Cloud
+        is provisioned on an org with Knowledge enabled.
+
+    - name: "Case_Home"
+      label: "Case — Home"
+      source_object: "Case"
+      source_type: SALESFORCE_CRM
+      status_in_source_org: ACTIVE
+      purpose: >
+        Feeds closed Cases into Data Cloud. Powers the Case retriever used by
+        the Similar Cases subagent to find semantically similar resolved cases.
+        Only closed/resolved cases should be indexed — open cases produce
+        misleading "resolutions" since they have no resolution yet.
+      required_fields:
+        - "Id"
+        - "CaseNumber"
+        - "Subject"
+        - "Description"
+        - "Status"
+        - "Type"
+        - "Origin"
+        - "CreatedDate"
+        - "ClosedDate"
+        - "[COMPANY]_Customer_Type__c"    # e.g. RH_Customer_Type__c — Candidate/Client/Third Party/Unknown
+        - "[COMPANY]_Case_Country__c"     # e.g. RH_Case_Country__c — US/UK/CA
+        - "SDO_Service_Close_Summary__c"  # VERIFY — may be SDO-specific. If absent, use Description as resolution source.
+      filters:
+        - field: "Status"
+          value: "Closed"
+          note: "Only closed cases. Adjust if the org uses a different terminal status value (e.g., 'Resolved')."
+      parametrization_notes: >
+        [COMPANY]_Customer_Type__c and [COMPANY]_Case_Country__c are custom
+        fields that must exist on the Case object before this stream is
+        configured. SDO_Service_Close_Summary__c is an SDO-specific field —
+        confirm whether it exists or use Description as the resolution text.
+
+    - name: "Contact_Home"
+      label: "Contact — Home"
+      source_object: "Contact"
+      source_type: SALESFORCE_CRM
+      status_in_source_org: ACTIVE
+      purpose: >
+        Feeds Contact records into Data Cloud to support identity resolution
+        and the requestor history lookup (which matches inbound case email
+        addresses to Contact records). Required for the Case Summary subagent
+        to surface prior case history accurately.
+      required_fields:
+        - "Id"
+        - "FirstName"
+        - "LastName"
+        - "Email"
+        - "RecordTypeId"   # Used by Derive_Customer_Type flow to classify Candidate vs. Client
+        - "AccountId"
+      parametrization_notes: >
+        RecordType-based classification is RH-specific. If the customer uses
+        a different mechanism to distinguish customer types, update the
+        Derive_Customer_Type flow accordingly.
+
+    - name: "Knowledge_DataCategorySelection_Home"
+      label: "Knowledge Data Category Selection — Home"
+      source_object: "KnowledgeArticleVersionDataCategorySelection"
+      source_type: SALESFORCE_CRM
+      status_in_source_org: ACTIVE
+      purpose: >
+        Feeds the data category assignments for Knowledge Articles into Data
+        Cloud. Required for the retriever pre-filter to work — without this
+        stream, the category field is not available as a filter dimension on
+        the Knowledge DLO.
+      parametrization_notes: >
+        Only needed if using data category pre-filtering on the KA retriever
+        (which is the RH pattern). If using a simpler retriever with no
+        pre-filter, this stream is optional.
+
+  # ── DATA LAKE OBJECTS (DLOs) ─────────────────────────────────────────────
+  # DLOs are auto-created by Data Cloud from the Data Streams above.
+  # Names follow the _Home__dll convention.
+  # The chunking field is the DLO field that gets split for vector indexing.
+
+  data_lake_objects:
+
+    - name: "Knowledge_kav_Home__dll"
+      created_from: "Knowledge_kav_Home"
+      chunking_field: "ArticleBody"   # The rich-text body field — VERIFY field API name in org
+      chunking_strategy: "Fixed-size chunks, ~512 tokens recommended"
+      purpose: "Source for the Knowledge Article Search Index"
+
+    - name: "Case_Home__dll"
+      created_from: "Case_Home"
+      chunking_field: "SDO_Service_Close_Summary__c"
+      chunking_field_fallback: "Description"
+      chunking_note: >
+        VERIFY: SDO_Service_Close_Summary__c is the RH resolution field.
+        If not present in the customer org, use Description. Do NOT chunk
+        on Id or CaseNumber — semantically meaningless and produces valid
+        but useless retriever results (this is the chunk-field-as-PK trap).
+      purpose: "Source for the Case Search Index"
+
+  # ── SEARCH INDEXES ────────────────────────────────────────────────────────
+  # Search Indexes are created manually in the Data Cloud app.
+  # They are NOT deployable via Metadata API — must be manually recreated
+  # in every target environment (sandbox → production).
+
+  search_indexes:
+
+    - name: "[COMPANY]_Knowledge_Index"
+      suggested_developer_name: "[COMPANY]_KA_Semantic_Index"
+      source_dlo: "Knowledge_kav_Home__dll"
+      chunking_field: "ArticleBody"   # VERIFY
+      index_type: "Semantic (vector)"
+      purpose: "Powers the Knowledge Article retriever for email draft grounding"
+      manual_setup: true
+      environment_note: "Must be rebuilt manually in each target org. Not deployable."
+
+    - name: "[COMPANY]_Case_Index"
+      suggested_developer_name: "[COMPANY]_Case_Semantic_Index"
+      source_dlo: "Case_Home__dll"
+      chunking_field: "SDO_Service_Close_Summary__c"   # or Description — VERIFY
+      index_type: "Semantic (vector)"
+      purpose: "Powers the similar case retriever"
+      manual_setup: true
+      environment_note: "Must be rebuilt manually in each target org. Not deployable."
+
+  # ── RETRIEVERS ────────────────────────────────────────────────────────────
+  # Retrievers are configured in Prompt Builder and referenced in the
+  # genAiPromptTemplate metadata. They ARE deployable via Metadata API
+  # (as part of the GenAiPromptTemplate) but the retriever ID changes
+  # per org — the Prompt Template must be updated post-deployment.
+
+  retrievers:
+
+    - name: "[COMPANY]_KA_Retriever"
+      source_org_api_name: "Knowledge_kav_Home_Retriever_1Cx_wg12e2f016b"
+      index: "[COMPANY]_Knowledge_Index"
+      pre_filter_field: "DataCategoryName"       # The DLO field to filter on
+      pre_filter_source: "[COMPANY]_Case_Country__c"   # The case field value passed as filter
+      pre_filter_placeholder: "placeholder_[COMPANY]CaseCountry"
+      search_text_source: "Case.Description + Case.Subject"
+      output_fields: ["Chunk"]
+      used_in_template: "[COMPANY]_Console_Draft_Response"
+      purpose: >
+        Retrieves Knowledge Articles scoped to the case country. Ensures that
+        a US candidate case gets US-specific KAs, not UK policy content.
+      parametrization_notes: >
+        The pre-filter maps DataCategoryName to [COMPANY]_Case_Country__c.
+        The data category values (US/UK/CA in RH) must match what is populated
+        in the custom field. If the customer doesn't operate in multiple
+        countries, this pre-filter can be removed and the retriever returns
+        all KAs. See data-cloud-setup-guide.md Step 5.
+
+    - name: "[COMPANY]_Case_Retriever"
+      source_org_api_name: "Case_Retriever_1Cx_wg1451c3a99"
+      index: "[COMPANY]_Case_Index"
+      pre_filter_field: "[COMPANY]_Customer_Type__c"
+      pre_filter_source: "customer_type variable (Candidate/Client/Third Party/Unknown)"
+      pre_filter_placeholder: "placeholder_[COMPANY]_Customer_Type"
+      search_text_source: "Case.Description + Case.Subject"
+      output_fields: ["Chunk", "Id", "CaseNumber", "Subject", "Type", "SDO_Service_Close_Summary__c"]
+      used_in_template: "[COMPANY]_Console_Similar_Cases"
+      purpose: >
+        Retrieves semantically similar resolved cases filtered by customer type.
+        Prevents a candidate-facing resolution from surfacing in a client case.
+      parametrization_notes: >
+        Pre-filter field must match the equivalent of RH_Customer_Type__c.
+        The output fields list must include Id for the clickable case link
+        rendering in the Similar Cases template. If SDO_Service_Close_Summary__c
+        is absent, add Description to output fields and update the template.
+
+  # ── ENVIRONMENT NOTES ────────────────────────────────────────────────────
+
+  environment_notes:
+    deployable_via_metadata_api:
+      - "Data Streams (Salesforce CRM type) — auto-created; no deploy needed"
+      - "GenAiPromptTemplate — deploys via sf project deploy; retriever ID must be updated post-deploy"
+    manual_setup_required:
+      - "Data Space assignment"
+      - "Search Indexes — must be created in Data Cloud UI in each environment"
+      - "Retriever configuration in Prompt Builder — retriever ID is org-specific"
+      - "Data Category Group and values (if using country pre-filter)"
+      - "Custom Case fields: [COMPANY]_Case_Country__c, [COMPANY]_Customer_Type__c, [COMPANY]_Case_Sensitivity__c"
+    indexing_known_issues:
+      - "Incremental Knowledge Article indexing gap: updates to KAs may not sync to Data Cloud immediately. Schedule full re-index until Salesforce Engineering resolves. (Doc 08, Engineering known issue #2)"
+      - "Article deletion not syncing: deleted KAs remain in the index until the next full re-index."

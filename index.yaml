@@ -1,0 +1,506 @@
+##############################################################################
+# SOLUTION LAUNCHPAD — MANIFEST INDEX
+# Version: 1.0
+# Maintainer: Victor Noé (L7 AFSE, AMER_ACC_CBS_AFDC)
+#
+# PURPOSE
+# This file is the single source of truth for the Solution Launchpad skill.
+# The skill fetches this file from GitHub to match SE discovery inputs against
+# available solution templates and return a ranked artifact kit recommendation.
+#
+# HOW IT WORKS
+# 1. SE runs the launchpad skill with natural language or structured variables
+# 2. Skill maps inputs to tags from the vocabulary below
+# 3. Skill scores templates by positive tag match count (weighted by dimension)
+# 4. Anti-tags are evaluated: blocker=true disqualifies, blocker=false warns
+# 5. Skill returns ranked templates + gap report for any unmatched or flagged inputs
+#
+# HOW TO ADD A TEMPLATE
+# 1. Create a new directory under solution-launchpad/<slug>/
+# 2. Add the required files (see schema.md for required file list)
+# 3. Add an entry to the templates list below following the schema
+# 4. Tag against the vocabulary sections below — do not invent new tags without
+#    adding them to the vocabulary first
+# 5. Run the parametrization test before setting validation_status: validated
+##############################################################################
+
+manifest_version: "1.0"
+last_updated: "2026-06-19"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAG VOCABULARY
+# The canonical list of all valid tags across all dimensions.
+# Templates are tagged using values from this list only.
+# To add a new tag, add it here first, then use it in a template entry.
+# ══════════════════════════════════════════════════════════════════════════════
+
+vocabulary:
+
+  channel:
+    - voice
+    - email
+    - sms
+    - chat
+    - whatsapp
+    - facebook-messenger
+    - messaging-for-web
+    - messaging-for-in-app
+    - slack
+    - service-console
+    - experience-cloud-portal
+    - mobile-app
+
+  industry:
+    - staffing
+    - healthcare
+    - financial-services
+    - insurance
+    - manufacturing
+    - retail
+    - consumer-goods
+    - technology
+    - professional-services
+    - media-entertainment
+    - public-sector
+    - education
+    - life-sciences
+    - energy-utilities
+    - nonprofit
+
+  capability:
+    # Case & Service
+    - case-triage
+    - case-routing
+    - case-summarization
+    - case-prioritization
+    - case-management
+    - sla-monitoring
+    - escalation-detection
+    - knowledge-retrieval
+    - knowledge-recommendation
+    - similar-case-retrieval
+    - entitlement-check
+    - asset-lookup
+    # Response & Communication
+    - email-draft
+    - email-response-generation
+    - chat-response
+    - sms-response
+    - voice-script
+    - live-agent-handoff
+    - sentiment-detection
+    - tone-adjustment
+    - multi-lingual-response
+    # Sales & Pipeline
+    - lead-qualification
+    - lead-scoring
+    - lead-enrichment
+    - opportunity-coaching
+    - deal-inspection
+    - forecast-guidance
+    - pipeline-review
+    - account-research
+    - contact-enrichment
+    - competitive-retrieval
+    - next-best-action
+    # Outreach & Engagement
+    - email-personalization
+    - outreach-generation
+    - sequence-assist
+    - call-prep
+    - call-summarization
+    - call-coaching
+    - meeting-recap
+    - follow-up-generation
+    # Field Service
+    - work-order-management
+    - dispatch-optimization
+    - mobile-step-by-step
+    - parts-lookup
+    - inventory-check
+    - appointment-scheduling
+    - appointment-rescheduling
+    - warranty-lookup
+    - asset-maintenance-history
+    # Employee & HR
+    - onboarding-assist
+    - policy-lookup
+    - benefits-guidance
+    - payroll-inquiry
+    - time-off-request
+    - learning-recommendation
+    - it-ticket-triage
+    - access-request
+    - org-chart-lookup
+    # Data & Records
+    - record-summarization
+    - data-enrichment
+    - duplicate-detection
+    - document-generation
+    - document-review
+    - form-assist
+    - approval-routing
+    - task-automation
+    - workflow-trigger
+    # Intake & Qualification
+    - intake-and-qualify
+    - triage-and-route
+    - intake-form-completion
+    - eligibility-check
+    - product-recommendation
+    - order-status
+
+  data_sources:
+    # Salesforce CRM Objects (native — no additional connector needed)
+    - sf-case
+    - sf-contact
+    - sf-account
+    - sf-lead
+    - sf-opportunity
+    - sf-knowledge
+    - sf-task
+    - sf-event
+    - sf-order
+    - sf-product
+    - sf-asset
+    - sf-contract
+    - sf-quote
+    - sf-work-order
+    - sf-custom-object
+    # Knowledge & Content
+    - knowledge-articles
+    - files-and-attachments
+    - content-library
+    - documents
+    # NOTE: email-templates is NOT listed here — ADL support unverified.
+    # Do not add until confirmed via Concierge or doc validation.
+    # Data Cloud Connectors
+    - dc-salesforce-crm
+    - dc-marketing-cloud
+    - dc-commerce-cloud
+    - dc-interaction-studio
+    - dc-google-analytics-4
+    - dc-amazon-s3
+    - dc-google-cloud-storage
+    - dc-azure-blob
+    - dc-sftp
+    - dc-http-streaming
+    - dc-snowflake
+    - dc-amazon-redshift
+    - dc-google-bigquery
+    - dc-databricks
+    - dc-azure-synapse
+    - dc-mulesoft
+    - dc-facebook
+    - dc-instagram
+    - dc-whatsapp
+    - dc-mobile-connect
+
+  surface:
+    - service-console
+    - experience-cloud
+    - slack
+    - mobile-app
+    - embedded-web
+    - einstein-copilot-sidebar
+    - voice-ivr
+    - flow-embedded
+    - standalone-portal
+
+  persona:
+    # Internal — Sales
+    - account-executive
+    - sales-rep
+    - sdr-bdr
+    # Internal — Service
+    - csm
+    - service-agent
+    - field-technician
+    - dispatcher
+    # Internal — Operations & Support
+    - marketing-manager
+    - recruiter
+    - hr-business-partner
+    - finance-analyst
+    - legal-counsel
+    - it-helpdesk
+    - operations-manager
+    - executive
+    # Internal — Industry-Specific
+    - nurse
+    - claims-adjuster
+    - underwriter
+    - loan-officer
+    - compliance-officer
+    - store-manager
+    - warehouse-associate
+    - teacher
+    - enrollment-counselor
+    # External / Customer-Facing
+    - customer
+    - partner
+    - supplier
+    - candidate
+    - patient
+    - student
+    - policyholder
+    - member
+    - citizen
+    - tenant
+
+  org_stack:
+    - service-cloud
+    - sales-cloud
+    - data-cloud
+    - experience-cloud
+    - field-service
+    - marketing-cloud
+    - commerce-cloud
+    - revenue-cloud
+    - mulesoft
+    - slack-platform
+    - einstein-platform
+    - industries-cloud
+
+  build_constraints:
+    # Declarative / Apex
+    - declarative-only
+    - apex-available
+    - apex-restricted
+    - managed-package-only
+    - no-custom-fields
+    - no-custom-metadata
+    # Integration
+    - no-external-callout
+    - no-connected-app
+    - no-third-party-integration
+    - named-credentials-unavailable
+    - legacy-soap-integration
+    - read-only-access
+    - no-record-creation
+    - no-write-back
+    # Infrastructure
+    - hyperforce-only
+    - government-cloud
+    - enhanced-domains-required
+    - multi-org-architecture
+    - sandbox-only
+    - ip-restricted
+    - sso-required
+    - limited-api-calls
+    # Compliance
+    - hipaa-required
+    - gdpr-restricted
+    - data-residency-eu
+    - data-residency-au
+    - fedramp-required
+    - pii-masking-required
+    - no-data-cloud
+    - no-llm-calls
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ANTI-TAG DEFINITIONS
+# Global rules that apply across all templates unless a template overrides.
+# Template-level anti_tags add to or override these for that template only.
+# blocker: true  → Tier 3: disqualifies the template entirely
+# blocker: false → Tier 2: generates a warning in the gap report, does not block
+# ══════════════════════════════════════════════════════════════════════════════
+
+global_anti_tags:
+
+  - condition: no-data-cloud
+    triggers_on_template_tag: "data-cloud"   # any template requiring data-cloud
+    blocker: true
+    message: >
+      This template requires Data Cloud. Verify Data Cloud SKU with AE before
+      scoping. If customer is in a buying motion for Data Cloud, generate the
+      Prerequisites Gap Report and continue — do not abandon the pattern.
+
+  - condition: no-data-cloud
+    triggers_on_template_data_source: "dc-*"  # any dc- connector
+    blocker: true
+    message: >
+      This template uses one or more Data Cloud connectors. Data Cloud must be
+      provisioned. Verify SKU with AE.
+
+  - condition: declarative-only
+    triggers_on_template_tag: "apex-available"
+    blocker: true
+    message: >
+      This template was built with Apex components. Customer constraint is
+      declarative-only. Apex components must be replaced or removed before
+      this pattern is deployable.
+
+  - condition: no-external-callout
+    triggers_on_template_data_source: "dc-mulesoft"
+    blocker: true
+    message: >
+      This template uses MuleSoft for external data integration. Customer
+      org does not allow external callouts. Pattern requires modification.
+
+  - condition: no-external-callout
+    triggers_on_template_data_source: "dc-http-streaming"
+    blocker: true
+    message: >
+      This template uses HTTP Streaming connector. Customer org does not
+      allow external callouts. Pattern requires modification.
+
+  - condition: hipaa-required
+    triggers_on_template_tag: "hipaa-validated"
+    blocker: false
+    missing: true   # fires when template does NOT have the tag
+    message: >
+      Customer requires HIPAA-compliant architecture. This template has not
+      been validated for HIPAA. Flag for legal/compliance review before
+      recommending to customer.
+
+  - condition: government-cloud
+    triggers_on_template_tag: "fedramp-ready"
+    blocker: false
+    missing: true
+    message: >
+      Customer is on Government Cloud. This template has not been validated
+      for FedRAMP. Confirm compatibility before scoping.
+
+  - condition: no-knowledge-articles
+    triggers_on_template_capability: "knowledge-retrieval"
+    blocker: false
+    message: >
+      This template uses Knowledge Article retrieval. Customer does not have
+      Knowledge Articles populated. The knowledge-grounded subagent(s) will
+      fall back to a degraded response. Recommend article population as a
+      pre-launch milestone.
+
+  - condition: no-knowledge-articles
+    triggers_on_template_capability: "email-draft"
+    blocker: false
+    message: >
+      Draft response grounding requires Knowledge Articles. Without articles,
+      the agent will generate ungrounded responses. Recommend populating at
+      least 20–30 articles before go-live.
+
+  - condition: pii-masking-required
+    triggers_on_template_capability: "record-summarization"
+    blocker: false
+    message: >
+      Customer requires PII masking. Agentforce does not currently support
+      PII masking natively in agent output. Verify current Trust Layer
+      capabilities before committing. (Doc 01 — Trust Layer)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TEMPLATES
+# Each entry represents one validated (or in-progress) solution template.
+# validation_status: validated | in-progress | draft
+# ══════════════════════════════════════════════════════════════════════════════
+
+templates:
+
+  - id: staffing-console-agent
+    label: "Staffing — Service Console Agent"
+    slug: staffing-console-agent
+    path: staffing-console-agent/
+    validation_status: in-progress   # passes parametrization test; second-customer test pending
+    source_org: trailsignup-b840dc69c3ac6b
+    extracted: "2026-06-18"
+    shaheen_pattern: SOMA             # Operator with Domain SME Workers
+
+    summary: >
+      Agentforce Internal Copilot for service console reps handling case volume
+      in a staffing industry context. Three subagent capabilities: case summary
+      with requestor history, similar resolved case retrieval (customer-type-scoped),
+      and AI-drafted email responses grounded on Knowledge Articles (country-scoped).
+      Built on Data Cloud retrievers. Declarative-only.
+
+    tags:
+      channel:
+        - service-console
+        - email
+      industry:
+        - staffing
+        - professional-services
+      capability:
+        - case-summarization
+        - case-management
+        - knowledge-retrieval
+        - knowledge-recommendation
+        - similar-case-retrieval
+        - email-draft
+        - email-response-generation
+        - record-summarization
+        - sentiment-detection
+      data_sources:
+        - sf-case
+        - sf-contact
+        - sf-knowledge
+        - sf-custom-object
+        - knowledge-articles
+        - dc-salesforce-crm
+      surface:
+        - service-console
+      persona:
+        - csm
+        - service-agent
+      org_stack:
+        - service-cloud
+        - data-cloud
+      build_constraints:
+        - declarative-only
+
+    requires:
+      - data-cloud                    # hard prerequisite — see anti_tags
+      - knowledge-articles            # soft prerequisite — degrades without
+      - service-cloud
+      custom_fields:
+        - "[COMPANY]_Case_Country__c"
+        - "[COMPANY]_Customer_Type__c"
+        - "[COMPANY]_Case_Sensitivity__c"
+        - "SDO_Service_Close_Summary__c (verify — may be SDO-specific)"
+
+    anti_tags:
+      - condition: no-data-cloud
+        blocker: true
+        message: >
+          Data Cloud is required for both retrievers (Knowledge and Case).
+          Without Data Cloud, the Similar Cases and Draft Response subagents
+          cannot function as built. Present data-kit.yaml to AE for SKU
+          conversation before scoping.
+      - condition: no-knowledge-articles
+        blocker: false
+        message: >
+          Draft Response subagent will return a fallback message without
+          Knowledge Articles. Recommend pre-populating 20–30 articles covering
+          the top case types before go-live. Agent is still deployable.
+      - condition: no-custom-fields
+        blocker: true
+        message: >
+          This template requires 3 custom fields on the Case object
+          ([COMPANY]_Case_Country__c, [COMPANY]_Customer_Type__c,
+          [COMPANY]_Case_Sensitivity__c). These cannot be replaced declaratively.
+          If org policy prevents custom field creation, this pattern cannot
+          be deployed as built.
+
+    files:
+      - README.md
+      - agent-definition.md
+      - prompt-templates.md
+      - flows.md
+      - permissions.md
+      - data-kit.yaml
+      - data-cloud-setup-guide.md
+
+    qualification_signals:
+      - "Customer has service reps handling high case volume (email or chat)"
+      - "Knowledge Articles exist or are planned (policy docs, procedure guides)"
+      - "Customer wants to reduce average handle time on email responses"
+      - "Staffing-specific: multi-country or multi-segment case handling (Candidate vs. Client)"
+
+    disqualification_signals:
+      - "No Data Cloud on order and not in buying motion"
+      - "Customer is purely inbound voice — no email case channel"
+      - "No Knowledge Articles and no plan to create them"
+
+    compensation_shape:
+      note: "EO subcloud (Agentforce for Service) + FA (Data Cloud). Confirm with AE — do not quote specific rates in customer-facing output."
